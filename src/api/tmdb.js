@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const TMDB_API_KEY = 'YOUR_TMDB_API_KEY'
+const TMDB_API_KEY = '13ef7c19ea1570a748cdceff664dbf42'
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p'
 
