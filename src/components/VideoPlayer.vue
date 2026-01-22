@@ -23,118 +23,98 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import Hls from 'hls.js'
 
-export default {
-  name: 'VideoPlayer',
-  props: {
-    selectedEpisode: {
-      type: Object,
-      default: null
-    }
-  },
-  setup(props) {
-    const videoRef = ref(null)
-    let hls = null
-    let currentBlobUrl = null
+const props = defineProps({
+  selectedEpisode: {
+    type: Object,
+    default: null
+  }
+})
 
-    const destroyHls = () => {
-      if (hls) {
-        hls.destroy()
-        hls = null
-      }
-      if (currentBlobUrl) {
-        URL.revokeObjectURL(currentBlobUrl)
-        currentBlobUrl = null
-      }
-    }
+const videoRef = ref(null)
+let hls = null
 
-    // --- HÀM CAN THIỆP M3U8 CỦA BẠN ---
-    const processM3U8 = async (url) => {
-      try {
-        const response = await fetch(url)
-        let text = await response.text()
-
-        // Ví dụ logic loại bỏ quảng cáo: 
-        // Tìm và xóa các đoạn nằm giữa #EXT-X-DISCONTINUITY hoặc link quảng cáo
-        // text = text.replace(/#EXT-X-DISCONTINUITY[\s\S]*?#EXT-X-DISCONTINUITY/g, ''); 
-        
-        // Ghi đè logic lọc của bạn vào đây:
-        const cleanM3U8 = text; 
-
-        // Tạo Blob URL để truyền trực tiếp vào Player
-        const blob = new Blob([cleanM3U8], { type: 'application/x-mpegURL' });
-        currentBlobUrl = URL.createObjectURL(blob);
-        return currentBlobUrl;
-      } catch (error) {
-        console.error("Lỗi khi xử lý m3u8:", error);
-        return url; // Trả về url gốc nếu lỗi
-      }
-    }
-
-    const initPlayer = async (episode) => {
-      await nextTick() // Đợi DOM render xong thẻ <video>
-      const video = videoRef.value
-      if (!video || !episode.link_m3u8) return
-
-      destroyHls()
-
-      // Xử lý link trước khi đưa vào player
-      const finalUrl = await processM3U8(episode.link_m3u8);
-
-      if (Hls.isSupported()) {
-        hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-          // Cấu hình để hỗ trợ load từ Blob
-          xhrSetup: (xhr) => {
-            xhr.withCredentials = false;
-          }
-        })
-
-        hls.loadSource(finalUrl)
-        hls.attachMedia(video)
-
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          video.play().catch(e => console.warn("Auto-play blocked:", e))
-        })
-
-        hls.on(Hls.Events.ERROR, (event, data) => {
-          if (data.fatal) {
-            console.error('HLS Fatal Error:', data.type)
-          }
-        })
-      } 
-      // Hỗ trợ Safari/iOS chạy trực tiếp
-      else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = finalUrl
-        video.addEventListener('loadedmetadata', () => {
-          video.play()
-        })
-      }
-    }
-
-    watch(
-      () => props.selectedEpisode,
-      (newEpisode) => {
-        if (newEpisode) {
-          initPlayer(newEpisode)
-        } else {
-          destroyHls()
-        }
-      },
-      { immediate: true }
-    )
-
-    onBeforeUnmount(() => {
-      destroyHls()
-    })
-
-    return { videoRef }
+// Hủy hls instance và dọn dẹp khi cần
+const destroyHls = () => {
+  if (hls) {
+    hls.destroy()
+    hls = null
   }
 }
+
+const initPlayer = async (episode) => {
+  if (!episode?.link_m3u8) return
+
+  await nextTick() // Đảm bảo video element đã render
+
+  const video = videoRef.value
+  if (!video) return
+
+  // Dọn dẹp instance cũ nếu có
+  destroyHls()
+
+  // Load trực tiếp link m3u8 gốc (không xử lý manifest)
+  const m3u8Url = episode.link_m3u8
+
+  if (Hls.isSupported()) {
+    hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: true,
+      backBufferLength: 90,
+      maxBufferLength: 120,
+      maxMaxBufferLength: 180,
+      xhrSetup: (xhr) => {
+        xhr.withCredentials = false // Nếu server không yêu cầu cookie thì để false
+      }
+    })
+
+    hls.loadSource(m3u8Url)
+    hls.attachMedia(video)
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      video.play().catch(e => {
+        console.warn('Auto-play bị chặn:', e)
+      })
+    })
+
+    hls.on(Hls.Events.ERROR, (event, data) => {
+      if (data.fatal) {
+        console.error('HLS Fatal Error:', data.type, data.details)
+        // Có thể thêm logic fallback nếu cần
+      }
+    })
+  } 
+  // Native HLS cho Safari/iOS
+  else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = m3u8Url
+    video.addEventListener('loadedmetadata', () => {
+      video.play().catch(e => console.warn('Auto-play bị chặn:', e))
+    })
+  } else {
+    console.error('Trình duyệt không hỗ trợ HLS')
+  }
+}
+
+// Theo dõi thay đổi selectedEpisode
+watch(
+  () => props.selectedEpisode,
+  (newEpisode) => {
+    if (newEpisode) {
+      initPlayer(newEpisode)
+    } else {
+      destroyHls()
+    }
+  },
+  { immediate: true }
+)
+
+// Cleanup khi component bị hủy
+onBeforeUnmount(() => {
+  destroyHls()
+})
 </script>
 
 <style scoped>
@@ -143,25 +123,38 @@ export default {
   border-radius: 10px;
   overflow: hidden;
 }
+
 .player-container {
   position: relative;
-  padding-top: 56.25%; /* 16:9 Aspect Ratio */
+  padding-top: 56.25%; /* Tỷ lệ 16:9 */
 }
-.video-element {
+
+.player-wrapper {
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
+
+.video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .player-info {
   padding: 15px;
   background: #1a1a1a;
   color: #fff;
 }
+
 .no-episode {
   height: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #666;
+  color: #888;
+  font-size: 1.2rem;
 }
 </style>
