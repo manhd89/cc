@@ -6,66 +6,34 @@ import VueLazyLoad from 'vue3-lazyload'
 
 const app = createApp(App)
 
-// Configure lazy load
+// Lazy load config
 app.use(VueLazyLoad, {
-  loading: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMxQTFBMUEiLz4KPHBhdGggZD0iTTUwIDI1TDUwIDc1TTI1IDUwSDc1IiBzdHJva2U9IiMzMzMiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=',
-  error: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMxQTFBMUEiLz4KPHBhdGggZD0iTTI1IDI1TDc1IDc1TTc1IDI1TDI1IDc1IiBzdHJva2U9IiNlNTA5MTQiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=',
+  loading:
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMxQTFBMUEiLz4KPHBhdGggZD0iTTUwIDI1TDUwIDc1TTI1IDUwSDc1IiBzdHJva2U9IiMzMzMiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=',
+  error:
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMxQTFBMUEiLz4KPHBhdGggZD0iTTI1IDI1TDc1IDc1TTc1IDI1TDI1IDc1IiBzdHJva2U9IiNlNTA5MTQiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo='
 })
 
-// Use plugins
+// Plugins
 app.use(router)
 app.use(store)
 
 // Global error handler
-app.config.errorHandler = (err, vm, info) => {
-  console.error('Vue Error:', err, info)
+app.config.errorHandler = (err, instance, info) => {
+  console.error('Vue Error:', err)
+  console.error('Info:', info)
 }
 
-// Mount app
+// Mount
 app.mount('#app')
 
 // Hide loading screen
 setTimeout(() => {
   const loading = document.getElementById('app-loading')
-  if (loading) {
-    loading.classList.add('hidden')
-    setTimeout(() => {
-      loading.style.display = 'none'
-    }, 300)
-  }
-}, 500)import { createApp } from 'vue'
-import App from './App.vue'
-import router from './router'
-import store from './store'
-import VueLazyLoad from 'vue3-lazyload'
+  if (!loading) return
 
-const app = createApp(App)
-
-// Configure lazy load
-app.use(VueLazyLoad, {
-  loading: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMxQTFBMUEiLz4KPHBhdGggZD0iTTUwIDI1TDUwIDc1TTI1IDUwSDc1IiBzdHJva2U9IiMzMzMiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=',
-  error: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMxQTFBMUEiLz4KPHBhdGggZD0iTTI1IDI1TDc1IDc1TTc1IDI1TDI1IDc1IiBzdHJva2U9IiNlNTA5MTQiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPgo=',
-})
-
-// Use plugins
-app.use(router)
-app.use(store)
-
-// Global error handler
-app.config.errorHandler = (err, vm, info) => {
-  console.error('Vue Error:', err, info)
-}
-
-// Mount app
-app.mount('#app')
-
-// Hide loading screen
-setTimeout(() => {
-  const loading = document.getElementById('app-loading')
-  if (loading) {
-    loading.classList.add('hidden')
-    setTimeout(() => {
-      loading.style.display = 'none'
-    }, 300)
-  }
+  loading.classList.add('hidden')
+  setTimeout(() => {
+    loading.style.display = 'none'
+  }, 300)
 }, 500)
