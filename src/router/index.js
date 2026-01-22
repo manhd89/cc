@@ -19,8 +19,14 @@ const routes = [
     props: true
   },
   {
-    path: '/watch/:type/:id/:episode?',
+    path: '/watch/:type/:id',
     name: 'Watch',
+    component: () => import('../views/WatchMovie.vue'),
+    props: true
+  },
+  {
+    path: '/watch/:type/:id/:episode',
+    name: 'WatchEpisode',
     component: () => import('../views/WatchMovie.vue'),
     props: true
   },
@@ -34,6 +40,11 @@ const routes = [
     name: 'Genre',
     component: () => import('../views/SearchResults.vue'),
     props: true
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('../views/NotFound.vue')
   }
 ]
 
@@ -44,7 +55,7 @@ const router = createRouter({
     if (savedPosition) {
       return savedPosition
     } else {
-      return { top: 0 }
+      return { top: 0, behavior: 'smooth' }
     }
   }
 })
