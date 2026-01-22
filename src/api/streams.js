@@ -46,7 +46,7 @@ export async function getPhimApiEpisodes(type, tmdbId) {
       server.server_data.map(ep => ({
         name: ep.name,
         link_m3u8: ep.link_m3u8,
-        link_embed: ep.link_embed,
+        //link_embed: ep.link_embed,
         server: server.server_name,
         source: "phimapi",
       }))
@@ -86,7 +86,7 @@ export async function getOphimEpisodes(tmdb) {
       server.server_data.map(ep => ({
         name: ep.name,
         link_m3u8: ep.link_m3u8,
-        link_embed: ep.link_embed,
+        //link_embed: ep.link_embed,
         server: server.server_name,
         source: "ophim",
       }))
