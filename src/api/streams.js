@@ -40,19 +40,22 @@ const isSameMovie = (tmdb, ophim) => {
 export async function getPhimApiEpisodes(type, tmdbId) {
   try {
     const res = await axios.get(`${PHIMAPI_BASE}/${type}/${tmdbId}`);
-    if (!res.data?.status) return [];
+
+    if (!res.data?.status || !Array.isArray(res.data.episodes)) return [];
 
     return res.data.episodes.flatMap(server =>
       server.server_data
-        .filter(ep => ep.link_m3u8) // ⬅️ QUAN TRỌNG
-        .map(ep => ({
+        .filter(ep => ep.link_m3u8)
+        .map((ep, index) => ({
+          id: `phimapi-${server.server_name}-${ep.name}-${index}`,
           name: ep.name,
           link_m3u8: ep.link_m3u8,
           server: server.server_name,
           source: "phimapi",
         }))
     );
-  } catch {
+  } catch (e) {
+    console.error("PhimAPI error:", e);
     return [];
   }
 }
@@ -62,38 +65,38 @@ export async function getPhimApiEpisodes(type, tmdbId) {
 export async function getOphimEpisodes(tmdb) {
   try {
     const keyword = tmdb.title || tmdb.name;
+
     const search = await axios.get(
       `${OPHIM_SEARCH}?keyword=${encodeURIComponent(keyword)}`
     );
 
     const items = search.data?.data?.items || [];
 
-    // Ưu tiên TMDB ID nếu có
-    let matched =
+    const matched =
       items.find(i => i.tmdb?.id?.toString() === tmdb.id.toString()) ||
       items[0];
 
     if (!matched) return [];
 
     const detail = await axios.get(`${OPHIM_DETAIL}/${matched.slug}`);
-    const ophimItem = detail.data.data.item;
+    const item = detail.data?.data?.item;
 
-    if (!isSameMovie(tmdb, ophimItem)) {
-      console.warn("⚠ Ophim mismatch:", ophimItem.slug);
-      return [];
-    }
+    if (!item?.episodes) return [];
+    if (!isSameMovie(tmdb, item)) return [];
 
-    return ophimItem.episodes.flatMap(server =>
+    return item.episodes.flatMap(server =>
       server.server_data
-        .filter(ep => ep.link_m3u8) // ⬅️ QUAN TRỌNG
-        .map(ep => ({
+        .filter(ep => ep.link_m3u8)
+        .map((ep, index) => ({
+          id: `ophim-${server.server_name}-${ep.name}-${index}`,
           name: ep.name,
           link_m3u8: ep.link_m3u8,
           server: server.server_name,
           source: "ophim",
         }))
     );
-  } catch {
+  } catch (e) {
+    console.error("Ophim error:", e);
     return [];
   }
 }
@@ -101,16 +104,12 @@ export async function getOphimEpisodes(tmdb) {
 /* ================= COMBINED ================= */
 
 export async function getMovieStreams({ type, tmdb }) {
-  const result = {
-    phimapi: [],
-    ophim: [],
-    all: [],
+  const phimapi = await getPhimApiEpisodes(type, tmdb.id);
+  const ophim = await getOphimEpisodes(tmdb);
+
+  return {
+    phimapi,
+    ophim,
+    all: [...phimapi, ...ophim],
   };
-
-  result.phimapi = await getPhimApiEpisodes(type, tmdb.id);
-  result.ophim = await getOphimEpisodes(tmdb);
-
-  result.all = [...result.phimapi, ...result.ophim];
-
-  return result;
 }
