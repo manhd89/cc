@@ -105,81 +105,44 @@ export default {
   setup(props) {
     const route = useRoute()
     const router = useRouter()
-
+    
     const loading = ref(true)
     const error = ref('')
     const movieDetails = ref(null)
     const episodes = ref([])
     const selectedEpisode = ref(null)
     const similarMovies = ref([])
-
-    const log = (...args) => console.debug('[WATCH]', ...args)
-
+    
     const releaseYear = computed(() => {
-      const date =
-        movieDetails.value?.release_date ||
-        movieDetails.value?.first_air_date
+      const date = movieDetails.value?.release_date || 
+                  movieDetails.value?.first_air_date
       return date ? new Date(date).getFullYear() : ''
     })
-
+    
     const fetchMovieData = async () => {
       try {
         loading.value = true
-        log('Fetching movie:', props.type, props.id)
-
-        /* ================= TMDB ================= */
+        
+        // Lấy chi tiết phim
         const detailsRes = await tmdbAPI.getDetails(props.type, props.id)
         movieDetails.value = detailsRes.data
-
-        log('TMDB details:', movieDetails.value)
-
-        /* ================= STREAMS ================= */
+        
+        // Lấy tập phim
         const streams = await getMovieStreams({
           type: props.type,
           tmdb: movieDetails.value
         })
-
-        log('Streams raw:', streams)
-
-        streams.all.forEach((ep, i) => {
-          if (!ep.link_m3u8) {
-            console.warn(
-              `[NO STREAM] #${i}`,
-              ep.name,
-              ep.server,
-              ep.source,
-              ep
-            )
-          } else {
-            log(
-              `[HAS STREAM]`,
-              ep.name,
-              ep.server,
-              ep.source,
-              ep.link_m3u8
-            )
-          }
-        })
-
+        
         episodes.value = streams.all
-
-        /* ================= AUTO SELECT ================= */
-        const firstPlayable = episodes.value.find(
-          ep => typeof ep.link_m3u8 === 'string' && ep.link_m3u8.includes('.m3u8')
-        )
-
-        if (firstPlayable) {
-          selectedEpisode.value = firstPlayable
-          log('Auto selected episode:', firstPlayable)
-        } else {
-          console.error('❌ NO PLAYABLE EPISODE FOUND')
-          selectedEpisode.value = null
+        
+        // Chọn tập đầu tiên nếu có
+        if (episodes.value.length > 0) {
+          selectedEpisode.value = episodes.value[0]
         }
-
-        /* ================= SIMILAR ================= */
-        similarMovies.value =
-          detailsRes.data?.similar?.results || []
-
+        
+        // Lấy phim tương tự
+        similarMovies.value = detailsRes.data.similar?.results || []
+        
       } catch (err) {
         console.error('Error fetching movie data:', err)
         error.value = 'Không thể tải phim. Vui lòng thử lại.'
@@ -187,36 +150,32 @@ export default {
         loading.value = false
       }
     }
-
+    
     const handleEpisodeSelect = (episode) => {
-      log('Episode selected:', episode)
-
-      if (!episode?.link_m3u8) {
-        console.warn('⚠️ Episode has no stream URL:', episode)
-      }
-
       selectedEpisode.value = episode
-
+      // Cập nhật URL nếu cần
       router.push({
         query: { ...route.query, episode: episode.name }
       })
     }
-
+    
     const formatRuntime = (minutes) => {
       const hours = Math.floor(minutes / 60)
       const mins = minutes % 60
       return `${hours}h ${mins}m`
     }
-
+    
     const watchSimilar = (movie) => {
       const type = movie.title ? 'movie' : 'tv'
       router.push(`/watch/${type}/${movie.id}`)
     }
-
-    const goBack = () => router.back()
-
+    
+    const goBack = () => {
+      router.back()
+    }
+    
     onMounted(fetchMovieData)
-
+    
     return {
       loading,
       error,
