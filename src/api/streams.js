@@ -6,6 +6,12 @@ const PHIMAPI_BASE = "https://phimapi.com/tmdb";
 const OPHIM_SEARCH = "https://ophim1.com/v1/api/tim-kiem";
 const OPHIM_DETAIL = "https://ophim1.com/v1/api/phim";
 
+/* ================= LOGGER ================= */
+
+const debug = (...args) => {
+  console.debug("[STREAMS]", ...args);
+};
+
 /* ================= UTILS ================= */
 
 const normalize = (s = "") =>
@@ -21,13 +27,13 @@ const isSameMovie = (tmdb, ophim) => {
   const tmdbTitle = normalize(tmdb.title || tmdb.name);
   const ophimTitle = normalize(ophim.name || ophim.origin_name);
 
-  const titleMatch =
-    tmdbTitle.includes(ophimTitle) ||
-    ophimTitle.includes(tmdbTitle);
-
   const tmdbYear = Number(
     (tmdb.release_date || tmdb.first_air_date || "").slice(0, 4)
   );
+
+  const titleMatch =
+    tmdbTitle.includes(ophimTitle) ||
+    ophimTitle.includes(tmdbTitle);
 
   const yearMatch =
     !ophim.year || Math.abs(tmdbYear - ophim.year) <= 1;
@@ -39,21 +45,36 @@ const isSameMovie = (tmdb, ophim) => {
 
 export async function getPhimApiEpisodes(type, tmdbId) {
   try {
+    debug("Fetching PhimAPI:", type, tmdbId);
+
     const res = await axios.get(`${PHIMAPI_BASE}/${type}/${tmdbId}`);
 
-    if (!res.data?.status || !Array.isArray(res.data.episodes)) return [];
+    debug("PhimAPI raw response:", res.data);
 
-    return res.data.episodes.flatMap(server =>
-      server.server_data
-        .filter(ep => ep.link_m3u8)
-        .map((ep, index) => ({
+    if (!res.data?.status || !Array.isArray(res.data.episodes)) {
+      debug("PhimAPI: no episodes");
+      return [];
+    }
+
+    const episodes = res.data.episodes.flatMap(server => {
+      debug("PhimAPI server:", server.server_name, server.server_data);
+
+      return server.server_data.map((ep, index) => {
+        debug("PhimAPI episode raw:", ep);
+
+        return {
           id: `phimapi-${server.server_name}-${ep.name}-${index}`,
           name: ep.name,
-          link_m3u8: ep.link_m3u8,
+          link_m3u8: ep.link_m3u8 || null,
           server: server.server_name,
           source: "phimapi",
-        }))
-    );
+        };
+      });
+    });
+
+    debug("PhimAPI parsed episodes:", episodes);
+
+    return episodes;
   } catch (e) {
     console.error("PhimAPI error:", e);
     return [];
@@ -64,37 +85,61 @@ export async function getPhimApiEpisodes(type, tmdbId) {
 
 export async function getOphimEpisodes(tmdb) {
   try {
-    const keyword = tmdb.title || tmdb.name;
+    debug("Searching Ophim:", tmdb.title || tmdb.name);
 
     const search = await axios.get(
-      `${OPHIM_SEARCH}?keyword=${encodeURIComponent(keyword)}`
+      `${OPHIM_SEARCH}?keyword=${encodeURIComponent(
+        tmdb.title || tmdb.name
+      )}`
     );
 
+    debug("Ophim search response:", search.data);
+
     const items = search.data?.data?.items || [];
+    if (!items.length) {
+      debug("Ophim: no search result");
+      return [];
+    }
 
     const matched =
       items.find(i => i.tmdb?.id?.toString() === tmdb.id.toString()) ||
       items[0];
 
-    if (!matched) return [];
+    debug("Ophim matched item:", matched);
 
     const detail = await axios.get(`${OPHIM_DETAIL}/${matched.slug}`);
+    debug("Ophim detail raw:", detail.data);
+
     const item = detail.data?.data?.item;
+    if (!item?.episodes) {
+      debug("Ophim: no episodes in detail");
+      return [];
+    }
 
-    if (!item?.episodes) return [];
-    if (!isSameMovie(tmdb, item)) return [];
+    if (!isSameMovie(tmdb, item)) {
+      debug("Ophim mismatch:", item);
+      return [];
+    }
 
-    return item.episodes.flatMap(server =>
-      server.server_data
-        .filter(ep => ep.link_m3u8)
-        .map((ep, index) => ({
+    const episodes = item.episodes.flatMap(server => {
+      debug("Ophim server:", server.server_name, server.server_data);
+
+      return server.server_data.map((ep, index) => {
+        debug("Ophim episode raw:", ep);
+
+        return {
           id: `ophim-${server.server_name}-${ep.name}-${index}`,
           name: ep.name,
-          link_m3u8: ep.link_m3u8,
+          link_m3u8: ep.link_m3u8 || null,
           server: server.server_name,
           source: "ophim",
-        }))
-    );
+        };
+      });
+    });
+
+    debug("Ophim parsed episodes:", episodes);
+
+    return episodes;
   } catch (e) {
     console.error("Ophim error:", e);
     return [];
@@ -104,12 +149,18 @@ export async function getOphimEpisodes(tmdb) {
 /* ================= COMBINED ================= */
 
 export async function getMovieStreams({ type, tmdb }) {
+  debug("getMovieStreams:", type, tmdb.id);
+
   const phimapi = await getPhimApiEpisodes(type, tmdb.id);
   const ophim = await getOphimEpisodes(tmdb);
+
+  const all = [...phimapi, ...ophim];
+
+  debug("FINAL STREAMS:", all);
 
   return {
     phimapi,
     ophim,
-    all: [...phimapi, ...ophim],
+    all,
   };
 }
