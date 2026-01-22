@@ -43,13 +43,14 @@ export async function getPhimApiEpisodes(type, tmdbId) {
     if (!res.data?.status) return [];
 
     return res.data.episodes.flatMap(server =>
-      server.server_data.map(ep => ({
-        name: ep.name,
-        link_m3u8: ep.link_m3u8,
-        //link_embed: ep.link_embed,
-        server: server.server_name,
-        source: "phimapi",
-      }))
+      server.server_data
+        .filter(ep => ep.link_m3u8) // ⬅️ QUAN TRỌNG
+        .map(ep => ({
+          name: ep.name,
+          link_m3u8: ep.link_m3u8,
+          server: server.server_name,
+          source: "phimapi",
+        }))
     );
   } catch {
     return [];
@@ -83,13 +84,14 @@ export async function getOphimEpisodes(tmdb) {
     }
 
     return ophimItem.episodes.flatMap(server =>
-      server.server_data.map(ep => ({
-        name: ep.name,
-        link_m3u8: ep.link_m3u8,
-        //link_embed: ep.link_embed,
-        server: server.server_name,
-        source: "ophim",
-      }))
+      server.server_data
+        .filter(ep => ep.link_m3u8) // ⬅️ QUAN TRỌNG
+        .map(ep => ({
+          name: ep.name,
+          link_m3u8: ep.link_m3u8,
+          server: server.server_name,
+          source: "ophim",
+        }))
     );
   } catch {
     return [];
