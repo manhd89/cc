@@ -1,26 +1,21 @@
 <template>
   <div class="watch-page">
     <div class="container">
-      <!-- Loading State -->
       <div v-if="loading" class="loading">
         <div class="spinner"></div>
         <p>Đang tải phim...</p>
       </div>
       
-      <!-- Error State -->
       <div v-else-if="error" class="error">
         <p>{{ error }}</p>
         <button @click="goBack" class="back-btn">Quay lại</button>
       </div>
       
-      <!-- Content -->
       <div v-else-if="movieDetails" class="watch-content">
-        <!-- Video Player -->
         <div class="player-section">
           <VideoPlayer :selectedEpisode="selectedEpisode" />
         </div>
         
-        <!-- Movie Info -->
         <div class="info-section">
           <div class="movie-header">
             <h1 class="movie-title">{{ movieDetails.title || movieDetails.name }}</h1>
@@ -34,7 +29,6 @@
             <p class="movie-overview">{{ movieDetails.overview }}</p>
           </div>
           
-          <!-- Episode Selector -->
           <div v-if="episodes.length > 0" class="episode-section">
             <h2>Chọn tập phim</h2>
             <EpisodeList 
@@ -44,7 +38,6 @@
             />
           </div>
           
-          <!-- Server Info -->
           <div v-if="selectedEpisode" class="server-info">
             <h3>Thông tin phát trực tuyến</h3>
             <div class="server-details">
@@ -55,7 +48,6 @@
           </div>
         </div>
         
-        <!-- Related Movies -->
         <div v-if="similarMovies.length > 0" class="related-section">
           <h2>Phim tương tự</h2>
           <div class="related-grid">
@@ -73,7 +65,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { tmdbAPI } from '@/api/tmdb'
 import { getMovieStreams } from '@/api/streams'
@@ -96,10 +88,6 @@ export default {
     id: {
       type: [String, Number],
       required: true
-    },
-    episode: {
-      type: String,
-      default: ''
     }
   },
   setup(props) {
@@ -118,16 +106,28 @@ export default {
                   movieDetails.value?.first_air_date
       return date ? new Date(date).getFullYear() : ''
     })
+
+    // Hàm cập nhật URL đồng bộ với tập phim đang chọn
+    const updateUrlQuery = (episode) => {
+      router.push({
+        query: { 
+          ep: episode.name,
+          sv: episode.server,
+          src: episode.source
+        }
+      })
+    }
     
     const fetchMovieData = async () => {
       try {
         loading.value = true
+        error.value = ''
         
-        // Lấy chi tiết phim
+        // 1. Lấy chi tiết phim từ TMDB
         const detailsRes = await tmdbAPI.getDetails(props.type, props.id)
         movieDetails.value = detailsRes.data
         
-        // Lấy tập phim
+        // 2. Lấy danh sách link stream/tập phim
         const streams = await getMovieStreams({
           type: props.type,
           tmdb: movieDetails.value
@@ -135,13 +135,25 @@ export default {
         
         episodes.value = streams.all
         
-        // Chọn tập đầu tiên nếu có
-        if (episodes.value.length > 0) {
+        // 3. Logic chọn tập phim hiển thị
+        const { ep, sv, src } = route.query
+        const foundEpisode = episodes.value.find(e => 
+          e.name == ep && e.server == sv && e.source == src
+        )
+        
+        if (foundEpisode) {
+          selectedEpisode.value = foundEpisode
+        } else if (episodes.value.length > 0) {
           selectedEpisode.value = episodes.value[0]
+          // Tự động cập nhật URL theo tập đầu tiên nếu URL query trống hoặc sai
+          updateUrlQuery(selectedEpisode.value)
         }
         
-        // Lấy phim tương tự
+        // 4. Lấy phim tương tự
         similarMovies.value = detailsRes.data.similar?.results || []
+        
+        // Cuộn lên đầu trang khi đổi phim
+        window.scrollTo({ top: 0, behavior: 'smooth' })
         
       } catch (err) {
         console.error('Error fetching movie data:', err)
@@ -151,23 +163,28 @@ export default {
       }
     }
     
+    // Xử lý khi người dùng click chọn tập phim khác
     const handleEpisodeSelect = (episode) => {
       selectedEpisode.value = episode
-      // Cập nhật URL nếu cần
-      router.push({
-        query: { ...route.query, episode: episode.name }
-      })
+      updateUrlQuery(episode)
     }
+    
+    // Xử lý khi bấm vào phim tương tự
+    const watchSimilar = (movie) => {
+      const type = movie.title ? 'movie' : 'tv'
+      // Đẩy route mới, watch(props.id) bên dưới sẽ kích hoạt việc tải lại data
+      router.push(`/watch/${type}/${movie.id}`)
+    }
+
+    // QUAN TRỌNG: Theo dõi sự thay đổi của ID phim để tải lại dữ liệu
+    watch(() => props.id, () => {
+      fetchMovieData()
+    })
     
     const formatRuntime = (minutes) => {
       const hours = Math.floor(minutes / 60)
       const mins = minutes % 60
-      return `${hours}h ${mins}m`
-    }
-    
-    const watchSimilar = (movie) => {
-      const type = movie.title ? 'movie' : 'tv'
-      router.push(`/watch/${type}/${movie.id}`)
+      return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
     }
     
     const goBack = () => {
@@ -194,28 +211,25 @@ export default {
 </script>
 
 <style scoped>
+/* Giữ nguyên phần Style của bạn hoặc tùy chỉnh thêm */
 .watch-page {
   min-height: 100vh;
   background: #0a0a0a;
   color: white;
   padding: 20px 0;
 }
-
 .container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 20px;
 }
-
 .loading, .error {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 500px;
-  text-align: center;
 }
-
 .spinner {
   width: 50px;
   height: 50px;
@@ -225,132 +239,29 @@ export default {
   animation: spin 1s ease-in-out infinite;
   margin-bottom: 20px;
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error p {
-  font-size: 1.2rem;
-  color: #e50914;
-  margin-bottom: 20px;
-}
-
-.back-btn {
-  background: #e50914;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
+@keyframes spin { to { transform: rotate(360deg); } }
 .watch-content {
   display: grid;
   gap: 30px;
 }
-
-.player-section {
-  grid-column: 1 / -1;
-}
-
-.info-section {
-  display: grid;
-  gap: 30px;
-}
-
-.movie-header {
+.player-section { grid-column: 1 / -1; }
+.movie-header, .episode-section, .server-info {
   background: #1a1a1a;
   border-radius: 10px;
   padding: 25px;
 }
-
-.movie-title {
-  font-size: 2rem;
-  margin: 0 0 15px 0;
-  color: white;
-}
-
-.movie-meta {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
-  color: #aaa;
-}
-
-.movie-meta span {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.rating {
-  color: #ffd700;
-  font-weight: bold;
-}
-
-.movie-overview {
-  color: #ccc;
-  line-height: 1.6;
-  font-size: 1.1rem;
-}
-
-.episode-section, .server-info {
-  background: #1a1a1a;
-  border-radius: 10px;
-  padding: 25px;
-}
-
-.episode-section h2, .server-info h3 {
-  margin: 0 0 20px 0;
-  color: white;
-  font-size: 1.5rem;
-}
-
-.server-details {
-  display: grid;
-  gap: 10px;
-}
-
-.server-details p {
-  margin: 0;
-  color: #ccc;
-}
-
-.related-section {
-  grid-column: 1 / -1;
-}
-
-.related-section h2 {
-  margin: 0 0 20px 20px;
-  color: white;
-  font-size: 1.8rem;
-}
-
+.movie-title { font-size: 2rem; margin-bottom: 15px; }
+.movie-meta { display: flex; gap: 20px; margin-bottom: 20px; color: #aaa; }
+.rating { color: #ffd700; font-weight: bold; }
 .related-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 20px;
 }
-
 @media (min-width: 1024px) {
-  .watch-content {
-    grid-template-columns: 2fr 1fr;
-  }
-  
-  .player-section {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  
-  .info-section {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  
-  .related-section {
-    grid-column: 1 / -1;
-  }
+  .watch-content { grid-template-columns: 2fr 1fr; }
+  .player-section { grid-column: 1; }
+  .info-section { grid-column: 2; }
+  .related-section { grid-column: 1 / -1; }
 }
 </style>
