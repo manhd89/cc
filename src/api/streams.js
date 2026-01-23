@@ -8,6 +8,16 @@ const PHIMAPI_BASE = "https://phimapi.com/tmdb";
 const OPHIM_SEARCH = "https://ophim1.com/v1/api/tim-kiem";
 const OPHIM_DETAIL = "https://ophim1.com/v1/api/phim";
 
+/* ================= UTILS ================= */
+
+// Chuẩn hóa tên để so sánh (xóa dấu, xóa ký tự đặc biệt, viết thường)
+const normalizeString = (s = "") =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
 /* ================= HELPERS ================= */
 
 const fetchTmdbDetails = async (type, id, lang = 'en-US') => {
@@ -16,8 +26,7 @@ const fetchTmdbDetails = async (type, id, lang = 'en-US') => {
       params: { api_key: TMDB_API_KEY, language: lang }
     });
     return res.data;
-  } catch (error) {
-    console.error("TMDB Fetch Error:", error.message);
+  } catch {
     return null;
   }
 };
@@ -47,20 +56,33 @@ export async function getPhimApiEpisodes(type, tmdbId) {
 
 export async function getOphimEpisodes(tmdbId, tmdbType) {
   try {
-    // 1. Lấy chi tiết bằng tiếng Anh
+    // 1. Lấy chi tiết tiếng Anh từ TMDB
     const movieEN = await fetchTmdbDetails(tmdbType, tmdbId, 'en-US');
     if (!movieEN) return [];
 
     const keyword = movieEN.title || movieEN.name;
+    const releaseYear = (movieEN.release_date || movieEN.first_air_date || "").slice(0, 4);
 
     // 2. Tìm kiếm trên Ophim
     const search = await axios.get(`${OPHIM_SEARCH}?keyword=${encodeURIComponent(keyword)}`, { timeout: 5000 });
     const items = search.data?.data?.items || [];
 
-    // 3. Khớp phim chính xác (Dùng toString() để tránh lệch kiểu dữ liệu string/number)
-    const matchedItem = items.find(i => 
-      i.tmdb?.id?.toString() === tmdbId.toString()
-    );
+    // 3. LOGIC KHỚP PHIM ĐA TẦNG
+    let matchedItem = items.find(i => {
+      // Tầng 1: Khớp bằng TMDB ID (Nếu Ophim có dữ liệu)
+      const isIdMatch = i.tmdb?.id?.toString() === tmdbId.toString();
+      if (isIdMatch) return true;
+
+      // Tầng 2: So sánh Tên và Năm (Dùng cho trường hợp ID bị rỗng như Túy Quyền II)
+      const normOphimName = normalizeString(i.name || "");
+      const normOphimOri = normalizeString(i.origin_name || "");
+      const normTmdbName = normalizeString(keyword);
+      
+      const isNameMatch = normOphimName === normTmdbName || normOphimOri === normTmdbName;
+      const isYearMatch = !i.year || !releaseYear || Math.abs(Number(i.year) - Number(releaseYear)) <= 1;
+
+      return isNameMatch && isYearMatch;
+    });
 
     if (!matchedItem) return [];
 
@@ -87,14 +109,10 @@ export async function getOphimEpisodes(tmdbId, tmdbType) {
 /* ================= COMBINED MAIN FUNCTION ================= */
 
 export async function getMovieStreams(params) {
-  // Fix lỗi không lấy được ID: Chấp nhận cả params.tmdbId hoặc params.tmdb.id
   const tmdbId = params.tmdbId || params.tmdb?.id || params.id;
   const type = params.type || (params.tmdb?.release_date ? 'movie' : 'tv');
   
-  if (!tmdbId) {
-    console.error("movieSource: Missing tmdbId!");
-    return { phimapi: [], ophim: [], all: [] };
-  }
+  if (!tmdbId) return { phimapi: [], ophim: [], all: [] };
 
   const sourceType = type === 'movie' ? 'movie' : 'tv';
 
