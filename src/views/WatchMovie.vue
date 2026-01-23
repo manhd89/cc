@@ -1,26 +1,21 @@
 <template>
   <div class="watch-page">
     <div class="container">
-      <!-- Loading State -->
       <div v-if="loading" class="loading">
         <div class="spinner"></div>
-        <p>Đang tải phim...</p>
+        <p>Đang tải dữ liệu phim...</p>
       </div>
       
-      <!-- Error State -->
       <div v-else-if="error" class="error">
         <p>{{ error }}</p>
         <button @click="goBack" class="back-btn">Quay lại</button>
       </div>
       
-      <!-- Content -->
       <div v-else-if="movieDetails" class="watch-content">
-        <!-- Video Player -->
         <div class="player-section">
           <VideoPlayer :selectedEpisode="selectedEpisode" />
         </div>
         
-        <!-- Movie Info -->
         <div class="info-section">
           <div class="movie-header">
             <h1 class="movie-title">{{ movieDetails.title || movieDetails.name }}</h1>
@@ -31,12 +26,14 @@
                 {{ formatRuntime(movieDetails.runtime) }}
               </span>
             </div>
-            <p class="movie-overview">{{ movieDetails.overview }}</p>
+            <p class="movie-overview">{{ movieDetails.overview || 'Chưa có mô tả cho phim này.' }}</p>
           </div>
           
-          <!-- Episode Selector -->
           <div v-if="episodes.length > 0" class="episode-section">
-            <h2>Chọn tập phim</h2>
+            <div class="section-title-row">
+              <h2>Chọn tập phim</h2>
+              <span class="total-ep">Tổng: {{ episodes.length }} link</span>
+            </div>
             <EpisodeList 
               :episodes="episodes"
               :selectedEpisode="selectedEpisode"
@@ -44,18 +41,25 @@
             />
           </div>
           
-          <!-- Server Info -->
           <div v-if="selectedEpisode" class="server-info">
             <h3>Thông tin phát trực tuyến</h3>
-            <div class="server-details">
-              <p><strong>Server:</strong> {{ selectedEpisode.server }}</p>
-              <p><strong>Nguồn:</strong> {{ selectedEpisode.source }}</p>
-              <p><strong>Tập:</strong> {{ selectedEpisode.name }}</p>
+            <div class="server-badge-group">
+              <div class="badge-item">
+                <span class="label">Nguồn:</span>
+                <span class="value uppercase">{{ selectedEpisode.source }}</span>
+              </div>
+              <div class="badge-item">
+                <span class="label">Server:</span>
+                <span class="value">{{ selectedEpisode.server }}</span>
+              </div>
+              <div class="badge-item">
+                <span class="label">Tập:</span>
+                <span class="value">{{ selectedEpisode.name }}</span>
+              </div>
             </div>
           </div>
         </div>
         
-        <!-- Related Movies -->
         <div v-if="similarMovies.length > 0" class="related-section">
           <h2>Phim tương tự</h2>
           <div class="related-grid">
@@ -73,7 +77,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { tmdbAPI } from '@/api/tmdb'
 import { getMovieStreams } from '@/api/streams'
@@ -96,10 +100,6 @@ export default {
     id: {
       type: [String, Number],
       required: true
-    },
-    episode: {
-      type: String,
-      default: ''
     }
   },
   setup(props) {
@@ -114,55 +114,82 @@ export default {
     const similarMovies = ref([])
     
     const releaseYear = computed(() => {
-      const date = movieDetails.value?.release_date || 
-                  movieDetails.value?.first_air_date
+      const date = movieDetails.value?.release_date || movieDetails.value?.first_air_date
       return date ? new Date(date).getFullYear() : ''
     })
+
+    // Cập nhật URL phản ánh Source, Server, Episode
+    const updateUrlParams = (ep) => {
+      router.replace({
+        query: { 
+          ...route.query, 
+          source: ep.source,
+          server: ep.server,
+          episode: ep.name 
+        }
+      })
+    }
+
+    // Tìm tập phim dựa trên các tham số URL
+    const findEpisodeFromQuery = (epList) => {
+      const { source, server, episode } = route.query
+      if (!source || !server || !episode) return null
+      
+      return epList.find(e => 
+        e.source === source && 
+        e.server === server && 
+        e.name.toString() === episode.toString()
+      )
+    }
     
     const fetchMovieData = async () => {
       try {
         loading.value = true
+        error.value = ''
         
-        // Lấy chi tiết phim
+        // 1. Lấy chi tiết từ TMDB
         const detailsRes = await tmdbAPI.getDetails(props.type, props.id)
         movieDetails.value = detailsRes.data
         
-        // Lấy tập phim
+        // 2. Lấy link stream
         const streams = await getMovieStreams({
           type: props.type,
-          tmdb: movieDetails.value
+          tmdbId: props.id
         })
         
-        episodes.value = streams.all
+        episodes.value = streams.all || []
         
-        // Chọn tập đầu tiên nếu có
+        // 3. Chọn tập phim
         if (episodes.value.length > 0) {
-          selectedEpisode.value = episodes.value[0]
+          const matched = findEpisodeFromQuery(episodes.value)
+          if (matched) {
+            selectedEpisode.value = matched
+          } else {
+            selectedEpisode.value = episodes.value[0]
+            updateUrlParams(episodes.value[0])
+          }
         }
         
-        // Lấy phim tương tự
-        similarMovies.value = detailsRes.data.similar?.results || []
+        similarMovies.value = detailsRes.data.similar?.results?.slice(0, 6) || []
         
       } catch (err) {
-        console.error('Error fetching movie data:', err)
-        error.value = 'Không thể tải phim. Vui lòng thử lại.'
+        console.error('Error:', err)
+        error.value = 'Không thể tải phim. Vui lòng thử lại sau.'
       } finally {
         loading.value = false
+        window.scrollTo({ top: 0, behavior: 'smooth' })
       }
     }
     
     const handleEpisodeSelect = (episode) => {
       selectedEpisode.value = episode
-      // Cập nhật URL nếu cần
-      router.push({
-        query: { ...route.query, episode: episode.name }
-      })
+      updateUrlParams(episode)
     }
     
     const formatRuntime = (minutes) => {
       const hours = Math.floor(minutes / 60)
       const mins = minutes % 60
-      return `${hours}h ${mins}m`
+      return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
     }
     
     const watchSimilar = (movie) => {
@@ -170,24 +197,17 @@ export default {
       router.push(`/watch/${type}/${movie.id}`)
     }
     
-    const goBack = () => {
-      router.back()
-    }
+    const goBack = () => router.back()
+
+    // Watcher: Tải lại khi đổi ID phim (Phim tương tự)
+    watch(() => props.id, fetchMovieData)
     
     onMounted(fetchMovieData)
     
     return {
-      loading,
-      error,
-      movieDetails,
-      episodes,
-      selectedEpisode,
-      similarMovies,
-      releaseYear,
-      handleEpisodeSelect,
-      formatRuntime,
-      watchSimilar,
-      goBack
+      loading, error, movieDetails, episodes,
+      selectedEpisode, similarMovies, releaseYear,
+      handleEpisodeSelect, formatRuntime, watchSimilar, goBack
     }
   }
 }
@@ -196,7 +216,7 @@ export default {
 <style scoped>
 .watch-page {
   min-height: 100vh;
-  background: #0a0a0a;
+  background: #0f0f0f;
   color: white;
   padding: 20px 0;
 }
@@ -217,34 +237,16 @@ export default {
 }
 
 .spinner {
-  width: 50px;
-  height: 50px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(229, 9, 20, 0.2);
   border-radius: 50%;
   border-top-color: #e50914;
-  animation: spin 1s ease-in-out infinite;
-  margin-bottom: 20px;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 15px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error p {
-  font-size: 1.2rem;
-  color: #e50914;
-  margin-bottom: 20px;
-}
-
-.back-btn {
-  background: #e50914;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1rem;
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .watch-content {
   display: grid;
@@ -253,104 +255,64 @@ export default {
 
 .player-section {
   grid-column: 1 / -1;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 16/9;
 }
 
-.info-section {
-  display: grid;
-  gap: 30px;
-}
+.info-section { display: grid; gap: 20px; }
 
-.movie-header {
+.movie-header, .episode-section, .server-info {
   background: #1a1a1a;
-  border-radius: 10px;
-  padding: 25px;
+  border-radius: 12px;
+  padding: 20px;
 }
 
-.movie-title {
-  font-size: 2rem;
-  margin: 0 0 15px 0;
-  color: white;
-}
+.movie-title { font-size: 1.8rem; margin-bottom: 10px; }
 
-.movie-meta {
+.movie-meta { display: flex; gap: 15px; color: #aaa; margin-bottom: 15px; font-size: 0.9rem; }
+
+.rating { color: #ffd700; font-weight: bold; }
+
+.movie-overview { color: #ccc; line-height: 1.6; font-size: 1rem; }
+
+.section-title-row {
   display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
-  color: #aaa;
-}
-
-.movie-meta span {
-  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 5px;
+  margin-bottom: 20px;
 }
 
-.rating {
-  color: #ffd700;
-  font-weight: bold;
+.total-ep { font-size: 0.8rem; color: #888; }
+
+.server-badge-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
 }
 
-.movie-overview {
-  color: #ccc;
-  line-height: 1.6;
-  font-size: 1.1rem;
+.badge-item {
+  background: #2a2a2a;
+  padding: 8px 15px;
+  border-radius: 6px;
+  font-size: 0.9rem;
 }
 
-.episode-section, .server-info {
-  background: #1a1a1a;
-  border-radius: 10px;
-  padding: 25px;
-}
+.badge-item .label { color: #888; margin-right: 8px; }
 
-.episode-section h2, .server-info h3 {
-  margin: 0 0 20px 0;
-  color: white;
-  font-size: 1.5rem;
-}
+.badge-item .value { color: #e50914; font-weight: bold; }
 
-.server-details {
-  display: grid;
-  gap: 10px;
-}
-
-.server-details p {
-  margin: 0;
-  color: #ccc;
-}
-
-.related-section {
-  grid-column: 1 / -1;
-}
-
-.related-section h2 {
-  margin: 0 0 20px 20px;
-  color: white;
-  font-size: 1.8rem;
-}
+.uppercase { text-transform: uppercase; }
 
 .related-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 15px;
+  margin-top: 20px;
 }
 
 @media (min-width: 1024px) {
-  .watch-content {
-    grid-template-columns: 2fr 1fr;
-  }
-  
-  .player-section {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  
-  .info-section {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  
-  .related-section {
-    grid-column: 1 / -1;
-  }
+  .watch-content { grid-template-columns: 2.5fr 1fr; }
 }
 </style>
