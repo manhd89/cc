@@ -18,19 +18,23 @@ const normalize = (s = "") =>
 const isSameMovie = (tmdb, ophim) => {
   if (!tmdb || !ophim) return false;
 
-  const tmdbTitle = normalize(tmdb.title || tmdb.name);
-  const ophimTitle = normalize(ophim.name || ophim.origin_name);
+  // 1. Ưu tiên tuyệt đối nếu có TMDB ID khớp nhau
+  if (ophim.tmdb?.id?.toString() === tmdb.id?.toString()) return true;
 
-  const titleMatch =
-    tmdbTitle.includes(ophimTitle) ||
-    ophimTitle.includes(tmdbTitle);
+  // 2. Kiểm tra tên
+  const tmdbTitle = normalize(tmdb.title || tmdb.name || "");
+  const tmdbOri = normalize(tmdb.original_title || tmdb.original_name || "");
+  const ophimTitle = normalize(ophim.name || "");
+  const ophimOri = normalize(ophim.origin_name || "");
 
-  const tmdbYear = Number(
-    (tmdb.release_date || tmdb.first_air_date || "").slice(0, 4)
-  );
+  const titleMatch = 
+    [tmdbTitle, tmdbOri].some(t => t && (ophimTitle.includes(t) || ophimOri.includes(t))) ||
+    [ophimTitle, ophimOri].some(o => o && (tmdbTitle.includes(o) || tmdbOri.includes(o)));
 
-  const yearMatch =
-    !ophim.year || Math.abs(tmdbYear - ophim.year) <= 1;
+  // 3. Kiểm tra năm (cho phép sai số 1 năm)
+  const tmdbYear = Number((tmdb.release_date || tmdb.first_air_date || "").slice(0, 4));
+  const ophimYear = Number(ophim.year);
+  const yearMatch = !ophimYear || !tmdbYear || Math.abs(tmdbYear - ophimYear) <= 1;
 
   return titleMatch && yearMatch;
 };
@@ -39,11 +43,11 @@ const isSameMovie = (tmdb, ophim) => {
 
 export async function getPhimApiEpisodes(type, tmdbId) {
   try {
-    const res = await axios.get(`${PHIMAPI_BASE}/${type}/${tmdbId}`);
+    const res = await axios.get(`${PHIMAPI_BASE}/${type}/${tmdbId}`, { timeout: 5000 });
     if (!res.data?.status) return [];
 
-    return res.data.episodes.flatMap(server =>
-      server.server_data.map(ep => ({
+    return (res.data.episodes || []).flatMap(server =>
+      (server.server_data || []).map(ep => ({
         name: ep.name,
         link_m3u8: ep.link_m3u8,
         link_embed: ep.link_embed,
@@ -60,30 +64,35 @@ export async function getPhimApiEpisodes(type, tmdbId) {
 
 export async function getOphimEpisodes(tmdb) {
   try {
-    const keyword = tmdb.title || tmdb.name;
-    const search = await axios.get(
-      `${OPHIM_SEARCH}?keyword=${encodeURIComponent(keyword)}`
-    );
+    // Thử tìm kiếm bằng Tên Tiếng Việt trước, nếu không có dùng Tên Gốc
+    const keywords = [tmdb.title || tmdb.name, tmdb.original_title].filter(Boolean);
+    let items = [];
 
-    const items = search.data?.data?.items || [];
+    for (const kw of keywords) {
+      const search = await axios.get(`${OPHIM_SEARCH}?keyword=${encodeURIComponent(kw)}`, { timeout: 5000 });
+      const foundItems = search.data?.data?.items || [];
+      if (foundItems.length > 0) {
+        items = foundItems;
+        // Nếu tìm theo keyword đầu tiên đã thấy phim có TMDB ID khớp thì dừng luôn
+        if (items.some(i => i.tmdb?.id?.toString() === tmdb.id.toString())) break;
+      }
+    }
 
-    // Ưu tiên TMDB ID nếu có
-    let matched =
-      items.find(i => i.tmdb?.id?.toString() === tmdb.id.toString()) ||
-      items[0];
+    if (items.length === 0) return [];
+
+    // Tìm item khớp nhất trong danh sách kết quả
+    const matched = items.find(i => i.tmdb?.id?.toString() === tmdb.id.toString()) || 
+                    items.find(i => isSameMovie(tmdb, i));
 
     if (!matched) return [];
 
     const detail = await axios.get(`${OPHIM_DETAIL}/${matched.slug}`);
-    const ophimItem = detail.data.data.item;
+    const item = detail.data?.data?.item;
 
-    if (!isSameMovie(tmdb, ophimItem)) {
-      console.warn("⚠ Ophim mismatch:", ophimItem.slug);
-      return [];
-    }
+    if (!item || !isSameMovie(tmdb, item)) return [];
 
-    return ophimItem.episodes.flatMap(server =>
-      server.server_data.map(ep => ({
+    return (item.episodes || []).flatMap(server =>
+      (server.server_data || []).map(ep => ({
         name: ep.name,
         link_m3u8: ep.link_m3u8,
         link_embed: ep.link_embed,
@@ -91,24 +100,29 @@ export async function getOphimEpisodes(tmdb) {
         source: "ophim",
       }))
     );
-  } catch {
+  } catch (err) {
+    console.error("Ophim Error:", err.message);
     return [];
   }
 }
 
 /* ================= COMBINED ================= */
 
+/**
+ * @param {Object} params
+ * @param {string} params.type - 'movie' hoặc 'tv'
+ * @param {Object} params.tmdb - Đối tượng data trả về từ TMDB API
+ */
 export async function getMovieStreams({ type, tmdb }) {
-  const result = {
-    phimapi: [],
-    ophim: [],
-    all: [],
+  // Chạy song song cả 2 nguồn để tối ưu tốc độ
+  const [phimapi, ophim] = await Promise.all([
+    getPhimApiEpisodes(type === 'movie' ? 'movie' : 'tv', tmdb.id),
+    getOphimEpisodes(tmdb)
+  ]);
+
+  return {
+    phimapi,
+    ophim,
+    all: [...phimapi, ...ophim],
   };
-
-  result.phimapi = await getPhimApiEpisodes(type, tmdb.id);
-  result.ophim = await getOphimEpisodes(tmdb);
-
-  result.all = [...result.phimapi, ...result.ophim];
-
-  return result;
 }
