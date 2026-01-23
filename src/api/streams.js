@@ -10,7 +10,6 @@ const OPHIM_DETAIL = "https://ophim1.com/v1/api/phim";
 
 /* ================= HELPERS ================= */
 
-// Lấy thông tin phim từ TMDB với ngôn ngữ tùy chọn (en-US để lấy tên gốc chuẩn)
 const fetchTmdbDetails = async (type, id, lang = 'en-US') => {
   try {
     const res = await axios.get(`${TMDB_BASE_URL}/${type}/${id}`, {
@@ -18,6 +17,7 @@ const fetchTmdbDetails = async (type, id, lang = 'en-US') => {
     });
     return res.data;
   } catch (error) {
+    console.error("TMDB Fetch Error:", error.message);
     return null;
   }
 };
@@ -47,29 +47,25 @@ export async function getPhimApiEpisodes(type, tmdbId) {
 
 export async function getOphimEpisodes(tmdbId, tmdbType) {
   try {
-    // 1. Lấy chi tiết phim bằng tiếng Anh để lấy Title chuẩn (Ví dụ: Drunken Master)
+    // 1. Lấy chi tiết bằng tiếng Anh
     const movieEN = await fetchTmdbDetails(tmdbType, tmdbId, 'en-US');
     if (!movieEN) return [];
 
     const keyword = movieEN.title || movieEN.name;
 
-    // 2. Tìm kiếm trên Ophim bằng tên tiếng Anh
+    // 2. Tìm kiếm trên Ophim
     const search = await axios.get(`${OPHIM_SEARCH}?keyword=${encodeURIComponent(keyword)}`, { timeout: 5000 });
     const items = search.data?.data?.items || [];
 
-    // 3. Khớp phim dựa trên TMDB ID trả về trong kết quả tìm kiếm
-    const matched = items.find(i => i.tmdb?.id?.toString() === tmdbId.toString());
+    // 3. Khớp phim chính xác (Dùng toString() để tránh lệch kiểu dữ liệu string/number)
+    const matchedItem = items.find(i => 
+      i.tmdb?.id?.toString() === tmdbId.toString()
+    );
 
-    if (!matched) {
-      // Nếu không khớp ID, thử tìm item đầu tiên có cùng năm phát hành (phòng trường hợp Ophim thiếu ID)
-      const releaseYear = (movieEN.release_date || movieEN.first_air_date || "").slice(0, 4);
-      const fallback = items.find(i => i.year?.toString() === releaseYear);
-      if (!fallback) return [];
-      matched.slug = fallback.slug;
-    }
+    if (!matchedItem) return [];
 
     // 4. Lấy chi tiết tập phim
-    const detail = await axios.get(`${OPHIM_DETAIL}/${matched.slug}`);
+    const detail = await axios.get(`${OPHIM_DETAIL}/${matchedItem.slug}`);
     const item = detail.data?.data?.item;
 
     if (!item || !item.episodes) return [];
@@ -84,30 +80,36 @@ export async function getOphimEpisodes(tmdbId, tmdbType) {
       }))
     );
   } catch (error) {
-    console.error("Ophim Source Error:", error.message);
     return [];
   }
 }
 
 /* ================= COMBINED MAIN FUNCTION ================= */
 
-/**
- * Hàm chính để lấy link stream từ tất cả các nguồn
- * @param {string} type - 'movie' hoặc 'tv'
- * @param {string|number} tmdbId - ID của phim trên TMDB
- */
-export async function getMovieStreams({ type, tmdbId }) {
+export async function getMovieStreams(params) {
+  // Fix lỗi không lấy được ID: Chấp nhận cả params.tmdbId hoặc params.tmdb.id
+  const tmdbId = params.tmdbId || params.tmdb?.id || params.id;
+  const type = params.type || (params.tmdb?.release_date ? 'movie' : 'tv');
+  
+  if (!tmdbId) {
+    console.error("movieSource: Missing tmdbId!");
+    return { phimapi: [], ophim: [], all: [] };
+  }
+
   const sourceType = type === 'movie' ? 'movie' : 'tv';
 
-  // Chạy song song cả 2 nguồn để tối ưu tốc độ build trang
-  const [phimapi, ophim] = await Promise.all([
-    getPhimApiEpisodes(sourceType, tmdbId),
-    getOphimEpisodes(tmdbId, sourceType)
-  ]);
+  try {
+    const [phimapi, ophim] = await Promise.all([
+      getPhimApiEpisodes(sourceType, tmdbId),
+      getOphimEpisodes(tmdbId, sourceType)
+    ]);
 
-  return {
-    phimapi,
-    ophim,
-    all: [...phimapi, ...ophim],
-  };
+    return {
+      phimapi,
+      ophim,
+      all: [...phimapi, ...ophim],
+    };
+  } catch (err) {
+    return { phimapi: [], ophim: [], all: [] };
+  }
 }
