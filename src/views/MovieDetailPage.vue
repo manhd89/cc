@@ -1,19 +1,15 @@
 <template>
   <div class="movie-detail-page">
-    <!-- Loading State -->
     <div v-if="loading" class="loading">
       <div class="spinner"></div>
     </div>
     
-    <!-- Error State -->
     <div v-else-if="error" class="error">
       <p>{{ error }}</p>
       <button @click="$router.back()" class="back-btn">Quay lại</button>
     </div>
     
-    <!-- Movie Detail -->
     <div v-else-if="movie" class="movie-detail">
-      <!-- Backdrop -->
       <div class="backdrop-section">
         <img 
           v-lazy="backdropUrl" 
@@ -28,10 +24,8 @@
         </div>
       </div>
       
-      <!-- Main Content -->
       <div class="container">
         <div class="movie-main">
-          <!-- Poster and Basic Info -->
           <div class="movie-poster-section">
             <img 
               v-lazy="posterUrl" 
@@ -48,7 +42,6 @@
             </div>
           </div>
           
-          <!-- Movie Info -->
           <div class="movie-info-section">
             <h1 class="movie-title">{{ movie.title || movie.name }}</h1>
             <div class="movie-meta">
@@ -75,7 +68,6 @@
             <h3 class="section-title">Tóm tắt</h3>
             <p class="overview">{{ movie.overview || 'Không có mô tả.' }}</p>
             
-            <!-- Credits -->
             <div v-if="movie.credits?.cast?.length" class="credits">
               <h3 class="section-title">Diễn viên</h3>
               <div class="cast-grid">
@@ -99,7 +91,6 @@
           </div>
         </div>
         
-        <!-- Similar Movies -->
         <div v-if="similarMovies.length" class="similar-section">
           <h2 class="section-title-large">Phim tương tự</h2>
           <div class="similar-grid">
@@ -117,7 +108,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { tmdbAPI } from '@/api/tmdb'
@@ -144,8 +135,13 @@ export default {
     const movie = ref(null)
     const similarMovies = ref([])
     
+    // Xác định phim lẻ hay TV show dựa trên URL hoặc dữ liệu trả về
+    const currentType = computed(() => {
+      return route.path.includes('/movie/') ? 'movie' : 'tv'
+    })
+
     const isFavorite = computed(() => {
-      return store.getters.isFavorite(movie.value)
+      return movie.value ? store.getters.isFavorite(movie.value) : false
     })
     
     const backdropUrl = computed(() => 
@@ -164,14 +160,18 @@ export default {
     const fetchMovieDetails = async () => {
       try {
         loading.value = true
-        const type = route.path.includes('/movie/') ? 'movie' : 'tv'
-        const response = await tmdbAPI.getDetails(type, props.id)
+        error.value = '' // Reset lỗi khi chuyển trang
+        
+        const response = await tmdbAPI.getDetails(currentType.value, props.id)
         
         movie.value = response.data
         similarMovies.value = response.data.similar?.results || []
         
-        // Update store
+        // Cập nhật Vuex
         store.commit('SET_CURRENT_MOVIE', movie.value)
+        
+        // Cuộn lên đầu trang khi đổi phim
+        window.scrollTo({ top: 0, behavior: 'smooth' })
         
       } catch (err) {
         console.error('Error fetching movie details:', err)
@@ -181,9 +181,13 @@ export default {
       }
     }
     
+    // Theo dõi sự thay đổi của ID để load lại trang
+    watch(() => props.id, () => {
+      fetchMovieDetails()
+    })
+
     const watchMovie = () => {
-      const type = route.path.includes('/movie/') ? 'movie' : 'tv'
-      router.push(`/watch/${type}/${props.id}`)
+      router.push(`/watch/${currentType.value}/${props.id}`)
     }
     
     const toggleFavorite = () => {
@@ -195,7 +199,7 @@ export default {
     const formatRuntime = (minutes) => {
       const hours = Math.floor(minutes / 60)
       const mins = minutes % 60
-      return `${hours}h ${mins}m`
+      return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
     }
     
     const getProfileImage = (path) => {
@@ -204,6 +208,7 @@ export default {
     
     const goToMovie = (similar) => {
       const type = similar.title ? 'movie' : 'tv'
+      // Router push sẽ làm thay đổi URL -> kích hoạt watch(props.id) ở trên
       router.push(`/${type}/${similar.id}`)
     }
     
