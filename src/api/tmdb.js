@@ -34,9 +34,10 @@ export const tmdbAPI = {
     tmdb.get('/search/multi', { params: { query, page } }),
   
   // Lấy chi tiết phim/TV
-  getDetails: (type, id) => 
+  getDetails: (type, id, lang = 'vi-VN') => 
     tmdb.get(`/${type}/${id}`, { 
       params: { 
+        language: lang,
         append_to_response: 'videos,credits,similar' 
       } 
     }),
