@@ -1,107 +1,123 @@
 <template>
   <header class="header">
     <div class="container">
-      <div class="logo" @click="$router.push('/')">
-        <h1>🎬 MovieHub</h1>
-      </div>
-      
-      <nav class="nav">
-        <router-link to="/" class="nav-link">Trang chủ</router-link>
-        <router-link to="/genre/movie/28" class="nav-link">Hành động</router-link>
-        <router-link to="/genre/movie/35" class="nav-link">Hài</router-link>
-        <router-link to="/genre/movie/18" class="nav-link">Drama</router-link>
-        <router-link to="/genre/tv/10765" class="nav-link">TV Shows</router-link>
-      </nav>
-      
-      <div class="search-container">
-        <input
-          v-model="searchQuery"
-          @input="onSearch"
-          @keyup.enter="performSearch"
-          type="text"
-          placeholder="Tìm phim, TV shows..."
-          class="search-input"
-        />
-        <button @click="performSearch" class="search-btn">
-          🔍
+      <div class="header-content">
+        <!-- Logo -->
+        <router-link to="/" class="logo">
+          <span class="logo-icon">🎬</span>
+          <span class="logo-text">MovieHub</span>
+        </router-link>
+
+        <!-- Navigation -->
+        <nav class="nav">
+          <router-link to="/" class="nav-link">
+            <span class="nav-icon">🏠</span>
+            <span class="nav-text">Trang chủ</span>
+          </router-link>
+          
+          <router-link to="/search" class="nav-link">
+            <span class="nav-icon">🔍</span>
+            <span class="nav-text">Tìm kiếm</span>
+          </router-link>
+          
+          <router-link to="/favorites" class="nav-link" v-if="favorites.length > 0">
+            <span class="nav-icon">❤️</span>
+            <span class="nav-text">Yêu thích ({{ favorites.length }})</span>
+          </router-link>
+          
+          <router-link to="/history" class="nav-link" v-if="watchHistory.length > 0">
+            <span class="nav-icon">🕒</span>
+            <span class="nav-text">Đã xem ({{ watchHistory.length }})</span>
+          </router-link>
+        </nav>
+
+        <!-- Search Bar -->
+        <div class="search-container">
+          <input
+            type="text"
+            v-model="searchQuery"
+            @keyup.enter="handleSearch"
+            placeholder="Tìm phim, TV shows..."
+            class="search-input"
+          />
+          <button @click="handleSearch" class="search-btn">
+            <span class="search-icon">🔍</span>
+          </button>
+        </div>
+
+        <!-- Mobile Menu -->
+        <button class="mobile-menu-btn" @click="toggleMobileMenu">
+          <span class="menu-icon">☰</span>
         </button>
       </div>
-      
-      <div class="mobile-menu-btn" @click="toggleMobileMenu">
-        ☰
+
+      <!-- Mobile Menu Dropdown -->
+      <div v-if="mobileMenuOpen" class="mobile-menu">
+        <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">
+          <span class="nav-icon">🏠</span> Trang chủ
+        </router-link>
+        
+        <router-link to="/search" class="mobile-nav-link" @click="closeMobileMenu">
+          <span class="nav-icon">🔍</span> Tìm kiếm
+        </router-link>
+        
+        <router-link v-if="favorites.length > 0" to="/favorites" 
+          class="mobile-nav-link" @click="closeMobileMenu">
+          <span class="nav-icon">❤️</span> Yêu thích ({{ favorites.length }})
+        </router-link>
+        
+        <router-link v-if="watchHistory.length > 0" to="/history" 
+          class="mobile-nav-link" @click="closeMobileMenu">
+          <span class="nav-icon">🕒</span> Đã xem ({{ watchHistory.length }})
+        </router-link>
       </div>
-    </div>
-    
-    <!-- Mobile Menu -->
-    <div v-if="showMobileMenu" class="mobile-menu">
-      <div class="mobile-search">
-        <input
-          v-model="searchQuery"
-          @keyup.enter="performSearch"
-          type="text"
-          placeholder="Tìm phim..."
-          class="mobile-search-input"
-        />
-        <button @click="performSearch" class="mobile-search-btn">
-          🔍
-        </button>
-      </div>
-      <router-link to="/" @click="closeMobileMenu" class="mobile-nav-link">
-        Trang chủ
-      </router-link>
-      <router-link to="/genre/movie/28" @click="closeMobileMenu" class="mobile-nav-link">
-        Hành động
-      </router-link>
-      <router-link to="/genre/movie/35" @click="closeMobileMenu" class="mobile-nav-link">
-        Hài
-      </router-link>
-      <router-link to="/genre/movie/18" @click="closeMobileMenu" class="mobile-nav-link">
-        Drama
-      </router-link>
-      <router-link to="/genre/tv/10765" @click="closeMobileMenu" class="mobile-nav-link">
-        TV Shows
-      </router-link>
     </div>
   </header>
 </template>
 
 <script>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
 import { useStore } from 'vuex'
+import { useRouter } from 'vue-router'
 
 export default {
   name: 'Header',
   setup() {
-    const router = useRouter()
     const store = useStore()
+    const router = useRouter()
+    
     const searchQuery = ref('')
-    const showMobileMenu = ref(false)
-    
-    const onSearch = () => {
-      store.dispatch('updateSearchQuery', searchQuery.value)
-    }
-    
-    const performSearch = () => {
+    const mobileMenuOpen = ref(false)
+
+    const favorites = computed(() => store.state.favorites)
+    const watchHistory = computed(() => store.state.watchHistory)
+
+    const handleSearch = () => {
       if (searchQuery.value.trim()) {
-        router.push(`/search?q=${encodeURIComponent(searchQuery.value)}`)
+        store.dispatch('updateSearchQuery', searchQuery.value.trim())
+        router.push({
+          path: '/search',
+          query: { q: searchQuery.value.trim() }
+        })
+        searchQuery.value = ''
         closeMobileMenu()
       }
     }
-    
+
     const toggleMobileMenu = () => {
-      showMobileMenu.value = !showMobileMenu.value
+      mobileMenuOpen.value = !mobileMenuOpen.value
     }
-    
+
     const closeMobileMenu = () => {
-      showMobileMenu.value = false
+      mobileMenuOpen.value = false
     }
-    
+
     return {
       searchQuery,
-      showMobileMenu,
-      onSearch,
-      performSearch,
+      mobileMenuOpen,
+      favorites,
+      watchHistory,
+      handleSearch,
       toggleMobileMenu,
       closeMobileMenu
     }
@@ -113,165 +129,153 @@ export default {
 .header {
   background: rgba(10, 10, 10, 0.95);
   backdrop-filter: blur(10px);
+  border-bottom: 1px solid #333;
   position: sticky;
   top: 0;
   z-index: 1000;
-  border-bottom: 1px solid #333;
 }
 
 .container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 20px;
+}
+
+.header-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 70px;
+  padding: 15px 0;
+  position: relative;
 }
 
 .logo {
-  cursor: pointer;
-  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #e50914;
+  font-size: 1.5rem;
+  font-weight: bold;
 }
 
-.logo h1 {
-  color: #e50914;
+.logo-icon {
   font-size: 1.8rem;
-  margin: 0;
 }
 
 .nav {
   display: flex;
-  gap: 25px;
+  gap: 20px;
   margin-left: 40px;
 }
 
 .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: #ccc;
   text-decoration: none;
-  font-weight: 500;
-  transition: color 0.3s ease;
-  padding: 5px 0;
-  position: relative;
+  padding: 8px 15px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
 }
 
 .nav-link:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: white;
 }
 
 .nav-link.router-link-active {
-  color: #e50914;
+  background: #e50914;
+  color: white;
 }
 
-.nav-link.router-link-active::after {
-  content: '';
-  position: absolute;
-  bottom: -5px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #e50914;
-  border-radius: 1px;
+.nav-text {
+  font-size: 0.9rem;
 }
 
 .search-container {
   display: flex;
   align-items: center;
-  background: #2a2a2a;
-  border-radius: 25px;
-  padding: 5px 15px;
+  gap: 10px;
   flex: 1;
   max-width: 400px;
-  margin: 0 20px;
+  margin-left: auto;
 }
 
 .search-input {
-  background: none;
-  border: none;
-  color: white;
-  padding: 8px;
   flex: 1;
-  font-size: 0.95rem;
-  outline: none;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px 15px;
+  color: white;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
 }
 
-.search-input::placeholder {
-  color: #888;
+.search-input:focus {
+  outline: none;
+  border-color: #e50914;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .search-btn {
-  background: none;
+  background: #e50914;
   border: none;
-  color: #888;
+  border-radius: 6px;
+  padding: 10px 20px;
+  color: white;
   cursor: pointer;
-  font-size: 1.1rem;
-  padding: 5px;
-  transition: color 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .search-btn:hover {
-  color: #e50914;
+  background: #f40612;
+  transform: scale(1.05);
 }
 
 .mobile-menu-btn {
   display: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: white;
-  padding: 10px;
-}
-
-.mobile-menu {
-  display: none;
-  background: #1a1a1a;
-  border-top: 1px solid #333;
-  padding: 20px;
-}
-
-.mobile-search {
-  display: flex;
-  margin-bottom: 20px;
-  background: #2a2a2a;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.mobile-search-input {
-  flex: 1;
   background: none;
   border: none;
   color: white;
-  padding: 12px 15px;
-  outline: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 5px;
 }
 
-.mobile-search-btn {
-  background: #333;
-  border: none;
-  color: white;
-  padding: 0 20px;
-  cursor: pointer;
+.mobile-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: rgba(10, 10, 10, 0.98);
+  border-top: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 10px;
 }
 
 .mobile-nav-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: #ccc;
   text-decoration: none;
-  padding: 12px 0;
-  border-bottom: 1px solid #333;
-  font-size: 1.1rem;
+  padding: 12px 15px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
 }
 
 .mobile-nav-link:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: white;
 }
 
-.mobile-nav-link.router-link-active {
-  color: #e50914;
-}
-
-@media (max-width: 768px) {
-  .nav, .search-container {
+@media (max-width: 1024px) {
+  .nav {
     display: none;
   }
   
@@ -279,18 +283,18 @@ export default {
     display: block;
   }
   
-  .mobile-menu {
-    display: block;
+  .search-container {
+    max-width: 300px;
   }
 }
 
-@media (max-width: 480px) {
-  .logo h1 {
-    font-size: 1.5rem;
+@media (max-width: 768px) {
+  .search-container {
+    display: none;
   }
   
-  .container {
-    padding: 0 15px;
+  .logo-text {
+    display: none;
   }
 }
 </style>
